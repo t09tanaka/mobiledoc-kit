@@ -154,6 +154,9 @@ export default class EventManager {
     if (!editor.hasCursor()) { return; }
     if (!editor.isEditable) { return; }
 
+    const isImeEvent = event.keyCode === 229;
+    if (isImeEvent) { return; }
+
     let key = Key.fromEvent(event);
     this._updateModifiersFromKey(key, {isDown:true});
 
