@@ -49,6 +49,7 @@ let expectations = [
   ['<p>first line</p>\n<p>second line</p>', ['first line','second line']],
   ['<p>first line</p>middle line<p>third line</p>', ['first line','middle line','third line']],
   ['<p>first line</p>second line', ['first line','second line']],
+  ['<p>first line</p><p></p><p>third line</p>', ['first line', 'third line']],
 
   ['<b>bold text</b>',['*bold text*']],
 
@@ -66,7 +67,7 @@ let expectations = [
   ['<ul><li>first element</li><li><ul><li>nested element</li></ul></li></ul>', ['* first element', '* nested element']],
 
   // See https://github.com/bustle/mobiledoc-kit/issues/333
-  ['abc\ndef', ['abc def']]
+  ['abc\ndef', ['abc def']],
 ];
 
 let structures = [
@@ -366,6 +367,24 @@ test('singly-nested ol lis are parsed correctly', (assert) => {
   assert.equal(section.items.length, 2, '2 items');
   assert.equal(section.items.objectAt(0).text, 'first element');
   assert.equal(section.items.objectAt(1).text, 'second element');
+});
+
+test('nested html doesn\'t create unneccessary whitespace', (assert) => {
+  let element = buildDOM(`
+    <div>
+      <p>
+        One
+      <p>
+      <p>
+        Two
+      </p>
+    </div>
+  `);
+  const post = parser.parse(element);
+
+  assert.equal(post.sections.length, 2, '2 sections');
+  assert.equal(post.sections.objectAt(0).text, 'One');
+  assert.equal(post.sections.objectAt(1).text, 'Two');
 });
 
 /*
