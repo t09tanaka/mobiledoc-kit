@@ -9,6 +9,8 @@ import Key from 'mobiledoc-kit/utils/key';
 import TextInputHandler from 'mobiledoc-kit/editor/text-input-handler';
 import SelectionManager from 'mobiledoc-kit/editor/selection-manager';
 import Browser from 'mobiledoc-kit/utils/browser';
+import { removeClassName } from '../utils/dom-utils';
+import { EDITOR_HAS_NO_CONTENT_CLASS_NAME } from '../renderers/editor-dom';
 
 const ELEMENT_EVENT_TYPES = [
   'keydown', 'keyup', 'cut', 'copy', 'paste', 'keypress', 'drop'
@@ -161,6 +163,12 @@ export default class EventManager {
       event.preventDefault();
       if (editor.post.isBlank) {
         editor._insertEmptyMarkupSectionAtCursor();
+      }
+      if(!editor.post.hasContent){
+        if((Key.fromEvent(event)).isPrintable()){
+          let { editor: { element } } = this;
+          removeClassName(element, EDITOR_HAS_NO_CONTENT_CLASS_NAME);
+        }
       }
       return;
     }
