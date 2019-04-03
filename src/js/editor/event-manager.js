@@ -36,6 +36,8 @@ export default class EventManager {
     ELEMENT_EVENT_TYPES.forEach(type => {
       this._addListener(element, type);
     });
+    this._addListener(element, 'compositionstart');
+    this._addListener(element, 'compositionend');
 
     this._selectionManager.start();
   }
@@ -281,6 +283,14 @@ export default class EventManager {
       let nextPosition = postEditor.insertPost(position, post);
       postEditor.setRange(nextPosition);
     });
+  }
+
+  compositionstart() {
+      this.editor.compositionstart();
+  }
+
+  compositionend() {
+      this.editor.compositionend();
   }
 
   _updateModifiersFromKey(key, {isDown}) {
