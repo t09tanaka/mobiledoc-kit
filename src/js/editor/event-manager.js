@@ -9,6 +9,8 @@ import Key from 'mobiledoc-kit/utils/key';
 import TextInputHandler from 'mobiledoc-kit/editor/text-input-handler';
 import SelectionManager from 'mobiledoc-kit/editor/selection-manager';
 import Browser from 'mobiledoc-kit/utils/browser';
+import { removeClassName } from '../utils/dom-utils';
+import { EDITOR_HAS_NO_CONTENT_CLASS_NAME } from '../renderers/editor-dom';
 
 const ELEMENT_EVENT_TYPES = [
   'keydown', 'keyup', 'cut', 'copy', 'paste', 'keypress', 'drop'
@@ -36,6 +38,8 @@ export default class EventManager {
     ELEMENT_EVENT_TYPES.forEach(type => {
       this._addListener(element, type);
     });
+    this._addListener(element, 'compositionstart');
+    this._addListener(element, 'compositionend');
 
     this._selectionManager.start();
   }
@@ -155,7 +159,19 @@ export default class EventManager {
     if (!editor.isEditable) { return; }
 
     const isImeEvent = event.keyCode === 229;
-    if (isImeEvent) { return; }
+    if (isImeEvent) {
+      event.preventDefault();
+      if (editor.post.isBlank) {
+        editor._insertEmptyMarkupSectionAtCursor();
+      }
+      if(!editor.post.hasContent){
+        if((Key.fromEvent(event)).isPrintable()){
+          let { editor: { element } } = this;
+          removeClassName(element, EDITOR_HAS_NO_CONTENT_CLASS_NAME);
+        }
+      }
+      return;
+    }
 
     let key = Key.fromEvent(event);
     this._updateModifiersFromKey(key, {isDown:true});
@@ -281,6 +297,14 @@ export default class EventManager {
       let nextPosition = postEditor.insertPost(position, post);
       postEditor.setRange(nextPosition);
     });
+  }
+
+  compositionstart() {
+    this.editor.compositionstart();
+  }
+
+  compositionend() {
+    this.editor.compositionend();
   }
 
   _updateModifiersFromKey(key, {isDown}) {

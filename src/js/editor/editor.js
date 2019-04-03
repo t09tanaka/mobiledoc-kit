@@ -151,6 +151,10 @@ class Editor {
     DEFAULT_TEXT_INPUT_HANDLERS.forEach(handler => this.onTextInput(handler));
 
     this.hasRendered = false;
+    this.enableLogging();
+
+    this.isComposingIME = false;
+    this.lastEscapedReparseSections = [];
   }
 
   /**
@@ -308,6 +312,17 @@ class Editor {
     }
   }
 
+  compositionstart() {
+    this.isComposingIME = true;
+    this.loggerFor('editor').log('compositionSTART');
+  }
+
+  compositionend() {
+    this.isComposingIME = false;
+    this._reparseLastEscapedSections();
+    this.loggerFor('editor').log('compositionEND.');
+  }
+
   /**
    * Convenience for {@link PostEditor#deleteAtPosition}. Deletes and puts the
    * cursor in the new position.
@@ -443,6 +458,11 @@ class Editor {
   }
 
   _reparseSections(sections=[]) {
+    if(this.isComposingIME){
+      this.lastEscapedReparseSections = sections;
+      this.loggerFor('editor').log('Escaping _reparseSections during IME compositions.');
+      return;
+    }
     let currentRange;
     sections.forEach(section => {
       this._parser.reparseSection(section, this._renderTree);
@@ -462,11 +482,21 @@ class Editor {
     });
     this.rerender();
     if (currentRange) {
-      this.selectRange(currentRange.move(DIRECTION.FORWARD));
+      let endOfString = currentRange;
+      let editStringLength = this._editHistory._pendingSnapshot.range.tail[1];
+      this.loggerFor('editor').log('Moving cursor forwards ' + editStringLength + ' times.');
+      for(let i = 0; i < editStringLength; i++){
+        endOfString = endOfString.move(DIRECTION.FORWARD);
+      }
+      this.selectRange(endOfString);
     }
 
     this.runCallbacks(CALLBACK_QUEUES.DID_REPARSE);
     this._postDidChange();
+  }
+
+  _reparseLastEscapedSections() {
+    this._reparseSections(this.lastEscapedReparseSections);
   }
 
   // FIXME this should be able to be removed now -- if any sections are detached,
@@ -614,6 +644,7 @@ class Editor {
    * @public
    */
   destroy() {
+    this.lastEscapedReparseSections.length = 0;
     this.isDestroyed = true;
     if (this._hasSelection()) {
       this.cursor.clearSelection();
