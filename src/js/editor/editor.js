@@ -482,7 +482,13 @@ class Editor {
     });
     this.rerender();
     if (currentRange) {
-      this.selectRange(currentRange.move(DIRECTION.FORWARD));
+      let endOfString = currentRange;
+      let editStringLength = this._editHistory._pendingSnapshot.range.tail[1];
+      this.loggerFor('editor').log('Moving cursor forwards ' + editStringLength + ' times.');
+      for(let i = 0; i < editStringLength; i++){
+        endOfString = endOfString.move(DIRECTION.FORWARD);
+      }
+      this.selectRange(endOfString);
     }
 
     this.runCallbacks(CALLBACK_QUEUES.DID_REPARSE);
