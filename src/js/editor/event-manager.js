@@ -157,7 +157,13 @@ export default class EventManager {
     if (!editor.isEditable) { return; }
 
     const isImeEvent = event.keyCode === 229;
-    if (isImeEvent) { return; }
+    if (isImeEvent) { 
+      event.preventDefault();
+      if (editor.post.isBlank) {
+        editor._insertEmptyMarkupSectionAtCursor();
+      }
+      return;
+    }
 
     let key = Key.fromEvent(event);
     this._updateModifiersFromKey(key, {isDown:true});
