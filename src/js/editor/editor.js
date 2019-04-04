@@ -450,7 +450,13 @@ class Editor {
     this.run(postEditor => {
       postEditor.removeAllSections();
       postEditor.migrateSectionsFromPost(post);
-      postEditor.setRange(Range.blankRange());
+      if(post.sections.length === 0){
+        const section = postEditor.builder.createMarkupSection('p');
+        postEditor.insertSectionBefore(this.post.sections, section);
+        postEditor.setRange(section.toRange());
+      }else{
+        postEditor.setRange(Range.blankRange());
+      }
     });
 
     this.runCallbacks(CALLBACK_QUEUES.DID_REPARSE);
