@@ -450,7 +450,13 @@ class Editor {
     this.run(postEditor => {
       postEditor.removeAllSections();
       postEditor.migrateSectionsFromPost(post);
-      postEditor.setRange(Range.blankRange());
+      if(post.sections.length === 0){
+        const section = postEditor.builder.createMarkupSection('p');
+        postEditor.insertSectionBefore(this.post.sections, section);
+        postEditor.setRange(section.toRange());
+      }else{
+        postEditor.setRange(Range.blankRange());
+      }
     });
 
     this.runCallbacks(CALLBACK_QUEUES.DID_REPARSE);
@@ -464,9 +470,23 @@ class Editor {
       return;
     }
     let currentRange;
+    let toEscape = false;
     sections.forEach(section => {
+      let firstChild = section.renderNode._element.firstChild;
+      if(firstChild.nodeName === '#text'){
+        if(firstChild.data.includes('\b') ||
+          firstChild.data.includes('\r')){
+          this.loggerFor('editor').log('Escaping _reparseSections on \'\\b | \\r\'');
+          document.getElementById('editor').innerHTML = '';
+          toEscape = true;
+          return;
+        }
+      }
       this._parser.reparseSection(section, this._renderTree);
     });
+    if(toEscape){
+      return;
+    }
     this._removeDetachedSections();
 
     if (this._renderTree.isDirty) {
