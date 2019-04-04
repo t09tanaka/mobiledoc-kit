@@ -206,6 +206,9 @@ export default class EventManager {
         } else if (key.ctrlKey && !Browser.isMac()) {
           unit = 'word';
         }
+        if(window.getSelection().rangeCount === 1){
+          break;
+        }
         editor.performDelete({direction, unit});
         event.preventDefault();
         break;
