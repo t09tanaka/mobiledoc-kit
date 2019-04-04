@@ -472,9 +472,11 @@ class Editor {
     let currentRange;
     let toEscape = false;
     sections.forEach(section => {
-      if(section.renderNode._element.firstChild.nodeName === '#text'){
-        if(section.renderNode._element.firstChild.data.includes('\b')){
-          this.loggerFor('editor').log('Escaping _reparseSections on \'\\b\'');
+      let firstChild = section.renderNode._element.firstChild;
+      if(firstChild.nodeName === '#text'){
+        if(firstChild.data.includes('\b') ||
+            firstChild.data.includes('\r')){
+          this.loggerFor('editor').log('Escaping _reparseSections on \'\\b | \\r\'');
           document.getElementById('editor').innerHTML = '';
           toEscape = true;
           return;
