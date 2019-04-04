@@ -475,7 +475,7 @@ class Editor {
       if(section.renderNode._element.firstChild.nodeName === '#text'){
         if(section.renderNode._element.firstChild.data.includes('\b')){
           this.loggerFor('editor').log('Escaping _reparseSections on \'\\b\'');
-          document.getElementById('editor').innerHTML = '<p><br></p>';
+          document.getElementById('editor').innerHTML = '';
           toEscape = true;
           return;
         }
