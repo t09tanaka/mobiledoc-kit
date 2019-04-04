@@ -464,9 +464,21 @@ class Editor {
       return;
     }
     let currentRange;
+    let toEscape = false;
     sections.forEach(section => {
+      if(section.renderNode._element.firstChild.nodeName === '#text'){
+        if(section.renderNode._element.firstChild.data.includes('\b')){
+          this.loggerFor('editor').log('Escaping _reparseSections on \'\\b\'');
+          document.getElementById('editor').innerHTML = '<p><br></p>';
+          toEscape = true;
+          return;
+        }
+      }
       this._parser.reparseSection(section, this._renderTree);
     });
+    if(toEscape){
+      return;
+    }
     this._removeDetachedSections();
 
     if (this._renderTree.isDirty) {
