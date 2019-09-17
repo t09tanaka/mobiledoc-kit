@@ -30,12 +30,14 @@ import {
 } from 'mobiledoc-kit/utils/dom-utils';
 
 import {
+  any,
   forEach,
   contains
 } from 'mobiledoc-kit/utils/array-utils';
 
 import {
-  transformHTMLText
+  transformHTMLText,
+  trimSectionText
 } from '../parsers/dom';
 
 import assert from '../utils/assert';
@@ -80,13 +82,9 @@ class SectionParser {
     if (!finished) {
       let childNodes = isTextNode(element) ? [element] : element.childNodes;
 
-      if (this.state.section.isListSection) {
-        this.parseListItems(childNodes);
-      } else {
-        forEach(childNodes, el => {
-          this.parseNode(el);
-        });
-      }
+      forEach(childNodes, el => {
+        this.parseNode(el);
+      });
     }
 
     this._closeCurrentSection();
@@ -94,24 +92,13 @@ class SectionParser {
     return this.sections;
   }
 
-  parseListItems(childNodes) {
-    let { state } = this;
-    forEach(childNodes, el => {
-      let parsed = new this.constructor(this.builder).parse(el);
-      let li = parsed[0];
-      if (li && li.isListItem) {
-        state.section.items.append(li);
-      }
-    });
-  }
-
   runPlugins(node) {
     let isNodeFinished = false;
     let env = {
       addSection: (section) => {
-        // avoid creating empty paragraphs due to wrappers elements around
+        // avoid creating empty paragraphs due to wrapper elements around
         // parser-plugin-handled elements
-        if (this.state.section.isMarkerable && !this.state.text) {
+        if (this.state.section && this.state.section.isMarkerable && !this.state.section.text && !this.state.text) {
           this.state.section = null;
         } else {
           this._closeCurrentSection();
@@ -121,6 +108,13 @@ class SectionParser {
       addMarkerable: (marker) => {
         let { state } = this;
         let { section } = state;
+        // if the first element doesn't create it's own state and it's plugin
+        // handler uses `addMarkerable` we won't have a section yet
+        if (!section) {
+          state.text = '';
+          state.section = this.builder.createMarkupSection(normalizeTagName('p'));
+          section = state.section;
+        }
         assert(
           'Markerables can only be appended to markup sections and list item sections',
           section && section.isMarkerable
@@ -144,6 +138,7 @@ class SectionParser {
     return false;
   }
 
+  /* eslint-disable complexity */
   parseNode(node) {
     if (!this.state.section) {
       this._updateStateFromElement(node);
@@ -155,24 +150,86 @@ class SectionParser {
     }
 
     // handle closing the current section and starting a new one if we hit a
-    // new-section-creating element. Skip if we're currently in a list-item
-    // section so that nested lists can be combined
-    if (this.state.section && !this.state.section.isListItem && !isTextNode(node) && node.tagName) {
-      // handle lists nested inside wrappers
-      if (this.state.section.isListSection) {
-        this.parseListItems(node.childNodes);
-        return;
+    // new-section-creating element.
+    if (this.state.section && !isTextNode(node) && node.tagName) {
+      let tagName = normalizeTagName(node.tagName);
+      let isListSection = contains(VALID_LIST_SECTION_TAGNAMES, tagName);
+      let isListItem = contains(VALID_LIST_ITEM_TAGNAMES, tagName);
+      let isMarkupSection = contains(VALID_MARKUP_SECTION_TAGNAMES, tagName);
+      let isNestedListSection = isListSection && this.state.section.isListItem;
+      let lastSection = this.sections[this.sections.length - 1];
+
+      // we can hit a list item after parsing a nested list, when that happens
+      // and the lists are of different types we need to make sure we switch
+      // the list type back
+      if (isListItem && lastSection && lastSection.isListSection) {
+        let parentElement = node.parentElement;
+        let parentElementTagName = normalizeTagName(parentElement.tagName);
+        if (parentElementTagName !== lastSection.tagName) {
+          this._closeCurrentSection();
+          this._updateStateFromElement(parentElement);
+        }
       }
 
-      let tagName = normalizeTagName(node.tagName);
-      if (contains(VALID_MARKUP_SECTION_TAGNAMES, tagName) || contains(VALID_LIST_SECTION_TAGNAMES, tagName)) {
+      // if we've broken out of a list due to nested section-level elements we
+      // can hit the next list item without having a list section in the current
+      // state. In this instance we find the parent list node and use it to
+      // re-initialize the state with a new list section
+      if (
+        isListItem &&
+        !(this.state.section.isListItem || this.state.section.isListSection) &&
+        !lastSection.isListSection
+      ) {
         this._closeCurrentSection();
-        this._updateStateFromElement(node);
+        this._updateStateFromElement(node.parentElement);
+      }
 
-        if (this.state.section.isListSection) {
-          this.parseListItems(node.childNodes);
+      // if we have consecutive list sections of different types (ul, ol) then
+      // ensure we close the current section and start a new one
+      let isNewListSection = lastSection
+        && lastSection.isListSection
+        && this.state.section.isListItem
+        && isListSection
+        && tagName !== lastSection.tagName;
+
+      if (
+        isNewListSection ||
+        (isListSection && !isNestedListSection) ||
+        isMarkupSection ||
+        isListItem
+      ) {
+        // don't break out of the list for list items that contain a single <p>.
+        // deals with typical case of <li><p>Text</p></li><li><p>Text</p></li>
+        if (
+          this.state.section.isListItem &&
+          tagName === 'p' &&
+          !node.nextSibling &&
+          contains(VALID_LIST_ITEM_TAGNAMES, normalizeTagName(node.parentElement.tagName))
+         ) {
+          this.parseElementNode(node);
           return;
         }
+
+        // avoid creating empty paragraphs due to wrapper elements around
+        // section-creating elements
+        if (this.state.section.isMarkerable && !this.state.text && this.state.section.markers.length === 0) {
+          this.state.section = null;
+        } else {
+          this._closeCurrentSection();
+        }
+
+        this._updateStateFromElement(node);
+      }
+
+      if (this.state.section.isListSection) {
+        // ensure the list section is closed and added to the sections list.
+        // _closeCurrentSection handles pushing list items onto the list section
+        this._closeCurrentSection();
+
+        forEach(node.childNodes, (node) => {
+          this.parseNode(node);
+        });
+        return;
       }
     }
 
@@ -190,7 +247,7 @@ class SectionParser {
     let { state } = this;
 
     const markups = this._markupsFromElement(element);
-    if (markups.length && state.text.length) {
+    if (markups.length && state.text.length && state.section.isMarkerable) {
       this._createMarker();
     }
     state.markups.push(...markups);
@@ -199,7 +256,7 @@ class SectionParser {
       this.parseNode(node);
     });
 
-    if (markups.length && state.text.length) {
+    if (markups.length && state.text.length && state.section.isMarkerable) {
       // create the marker started for this node
       this._createMarker();
     }
@@ -214,6 +271,10 @@ class SectionParser {
   }
 
   _updateStateFromElement(element) {
+    if (isCommentNode(element)) {
+      return;
+    }
+
     let { state } = this;
     state.section = this._createSectionFromElement(element);
     state.markups = this._markupsFromElement(element);
@@ -222,18 +283,43 @@ class SectionParser {
 
   _closeCurrentSection() {
     let { sections, state } = this;
+    let lastSection = sections[sections.length - 1];
 
     if (!state.section) {
       return;
     }
 
     // close a trailing text node if it exists
-    if (state.text.length) {
+    if (state.text.length && state.section.isMarkerable) {
       this._createMarker();
     }
 
-    sections.push(state.section);
+    // push listItems onto the listSection or add a new section
+    if (state.section.isListItem && lastSection && lastSection.isListSection) {
+      trimSectionText(state.section);
+      lastSection.items.append(state.section);
+    } else {
+      // avoid creating empty markup sections, especially useful for indented source
+      if (
+        state.section.isMarkerable &&
+        !state.section.text.trim() &&
+        !any(state.section.markers, marker => marker.isAtom)
+      ) {
+        state.section = null;
+        state.text = '';
+        return;
+      }
+
+      // remove empty list sections before creating a new section
+      if (lastSection && lastSection.isListSection && lastSection.items.length === 0) {
+        sections.pop();
+      }
+
+      sections.push(state.section);
+    }
+
     state.section = null;
+    state.text = '';
   }
 
   _markupsFromElement(element) {
@@ -315,8 +401,11 @@ class SectionParser {
   }
 
   _createSectionFromElement(element) {
-    let { builder } = this;
+    if (isCommentNode(element)) {
+      return;
+    }
 
+    let { builder } = this;
     let section;
     let {tagName, sectionType, inferredTagName} =
       this._getSectionDetails(element);
@@ -340,10 +429,9 @@ class SectionParser {
   }
 
   _isSkippable(element) {
-    return isCommentNode(element) ||
-           (element.nodeType === NODE_TYPES.ELEMENT &&
-            contains(SKIPPABLE_ELEMENT_TAG_NAMES,
-                    normalizeTagName(element.tagName)));
+    return element.nodeType === NODE_TYPES.ELEMENT &&
+           contains(SKIPPABLE_ELEMENT_TAG_NAMES,
+                    normalizeTagName(element.tagName));
   }
 }
 

@@ -49,6 +49,7 @@ let expectations = [
   ['<p>first line</p>\n<p>second line</p>', ['first line','second line']],
   ['<p>first line</p>middle line<p>third line</p>', ['first line','middle line','third line']],
   ['<p>first line</p>second line', ['first line','second line']],
+  ['<p>first line</p><p></p><p>third line</p>', ['first line', 'third line']],
 
   ['<b>bold text</b>',['*bold text*']],
 
@@ -66,24 +67,16 @@ let expectations = [
   ['<ul><li>first element</li><li><ul><li>nested element</li></ul></li></ul>', ['* first element', '* nested element']],
 
   // See https://github.com/bustle/mobiledoc-kit/issues/333
-  ['abc\ndef', ['abc def']]
+  ['abc\ndef', ['abc def']],
 ];
 
 let structures = [
   // See https://github.com/bustle/mobiledoc-kit/issues/648
-  ['<section><p>first</p><p>second</p></section>', ['first', 'second'], 'one level'],
+  ['<section><p>first</p><p>second</p></section>', ['first','second'], 'one level'],
   ['<section><div><p>first</p><p>second</p></div></section>', ['first', 'second'], 'two levels'],
   ['<section><div><div><p>first</p><p>second</p></div></div></section>', ['first', 'second'], 'three levels'],
   ['<section><div><p>first</p></div><p>second</p></section>', ['first', 'second'], 'offset left'],
-  ['<section><p>first</p><div><p>second</p></div></section>', ['first', 'second'], 'offset right'],
-  // Part two - siblings
-  ['<section><p>first</p></section><section><p>second</p></section>', ['first', 'second'], 'siblings'],
-  ['<div><section><p>first</p></section><section><p>second</p></section></div>', ['first', 'second'], 'wrapped siblings'],
-  ['<section><div><p>first</p></div></section><section><div><p>second</p></div></section>', ['first', 'second'], 'two-level siblings'],
-  ['<section><div><p>first</p></div></section><section><p>second</p></section>', ['first', 'second'], 'offset siblings left'],
-  ['<section><p>first</p></section><section><div><p>second</p></div></section>', ['first', 'second'], 'offset siblings right'],
-  // Part three - trees
-  ['<section><p>first</p></section><section><div><p>second</p></div><section><div><p>third</p><p>fourth</p></div></section></section>', ['first', 'second', 'third', 'fourth'], 'tree']
+  ['<section><p>first</p><div><p>second</p></div></section>', ['first', 'second'], 'offset right']
 ];
 
 expectations.forEach(([html, dslText]) => {
@@ -368,8 +361,25 @@ test('singly-nested ol lis are parsed correctly', (assert) => {
   assert.equal(section.items.objectAt(1).text, 'second element');
 });
 
-/*
- * FIXME: Google docs nests uls like this
+test('nested html doesn\'t create unneccessary whitespace', (assert) => {
+  let element = buildDOM(`
+    <div>
+      <p>
+        One
+      <p>
+      <p>
+        Two
+      </p>
+    </div>
+  `);
+  const post = parser.parse(element);
+
+  assert.equal(post.sections.length, 2, '2 sections');
+  assert.equal(post.sections.objectAt(0).text, 'One');
+  assert.equal(post.sections.objectAt(1).text, 'Two');
+});
+
+// Google docs nests uls like this
 test('lis in nested uls are flattened (when ul is child of ul)', (assert) => {
   let element= buildDOM(`
     <ul>
@@ -386,4 +396,30 @@ test('lis in nested uls are flattened (when ul is child of ul)', (assert) => {
   assert.equal(section.items.objectAt(0).text, 'outer');
   assert.equal(section.items.objectAt(1).text, 'inner');
 });
- */
+
+test('#appendSection does not skip sections containing a single atom with no text value', (assert) => {
+  let options = {
+    plugins: [function (node, builder, {addMarkerable, nodeFinished}) {
+      if (node.nodeType !== 1 || node.tagName !== 'BR') {
+          return;
+      }
+
+      let softReturn = builder.createAtom('soft-return');
+      addMarkerable(softReturn);
+
+      nodeFinished();
+    }]
+  };
+  parser = new DOMParser(builder, options);
+
+  let element = buildDOM(`Testing<br>Atoms`);
+  const post = parser.parse(element);
+
+  assert.equal(post.sections.length, 1, '1 section');
+  let section = post.sections.objectAt(0);
+  assert.equal(section.tagName, 'p');
+  assert.equal(section.markers.length, 3, '3 markers');
+  assert.equal(section.markers.objectAt(0).value, 'Testing');
+  assert.equal(section.markers.objectAt(1).name, 'soft-return');
+  assert.equal(section.markers.objectAt(2).value, 'Atoms');
+});

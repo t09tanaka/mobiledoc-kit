@@ -16,6 +16,7 @@ import {
   normalizeTagName
 } from '../utils/dom-utils';
 import {
+  any,
   detect,
   forEach
 } from '../utils/array-utils';
@@ -34,6 +35,14 @@ export function transformHTMLText(textContent) {
   text = text.replace(NO_BREAK_SPACE_REGEX, ' ');
   text = text.replace(TAB_CHARACTER_REGEX, TAB);
   return text;
+}
+
+export function trimSectionText(section) {
+  if (section.isMarkerable && section.markers.length) {
+    let { head, tail } = section.markers;
+    head.value = head.value.replace(/^\s+/, '');
+    tail.value = tail.value.replace(/\s+$/, '');
+  }
 }
 
 function isGoogleDocsContainer(element) {
@@ -108,6 +117,10 @@ class DOMParser {
       this.appendSections(post, sections);
     });
 
+    // trim leading/trailing whitespace of markerable sections to avoid
+    // unnessary whitespace from indented HTML input
+    forEach(post.sections, section => trimSectionText(section));
+
     return post;
   }
 
@@ -116,7 +129,12 @@ class DOMParser {
   }
 
   appendSection(post, section) {
-    if (section.isBlank || (section.isMarkerable && trim(section.text) === '')) {
+    if (
+      section.isBlank ||
+      (section.isMarkerable &&
+        trim(section.text) === "" &&
+        !any(section.markers, marker => marker.isAtom))
+    ) {
       return;
     }
 
